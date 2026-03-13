@@ -36,7 +36,7 @@ def format_timestamp(seconds: float) -> str:
     return f"{m:02d}:{s:02d}"
 
 
-def transcribe(input_path: Path, model_size: str = "base", language: str | None = None, timestamps: bool = True) -> str:
+def transcribe(input_path: Path, model_size: str = "medium", language: str | None = None, timestamps: bool = False) -> str:
     """Transcribe a video/audio file and return markdown content."""
     if input_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
         print(f"Unsupported format: {input_path.suffix}", file=sys.stderr)

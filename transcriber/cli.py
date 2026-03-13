@@ -13,10 +13,10 @@ def main() -> None:
     )
     parser.add_argument("input", type=Path, help="Path to video or audio file")
     parser.add_argument("-o", "--output", type=Path, help="Output markdown file (default: <input>.md)")
-    parser.add_argument("-m", "--model", default="base", choices=["tiny", "base", "small", "medium", "large-v3"],
-                        help="Whisper model size (default: base)")
+    parser.add_argument("-m", "--model", default="medium", choices=["tiny", "base", "small", "medium", "large-v3"],
+                        help="Whisper model size (default: medium)")
     parser.add_argument("-l", "--language", default=None, help="Language code, e.g. 'en', 'uk', 'ru' (default: auto-detect)")
-    parser.add_argument("--no-timestamps", action="store_true", help="Omit timestamps from output")
+    parser.add_argument("--timestamps", action="store_true", help="Include timestamps in output (off by default)")
 
     args = parser.parse_args()
 
@@ -30,7 +30,7 @@ def main() -> None:
         input_path=args.input.resolve(),
         model_size=args.model,
         language=args.language,
-        timestamps=not args.no_timestamps,
+        timestamps=args.timestamps,
     )
 
     output_path.write_text(result, encoding="utf-8")

@@ -146,8 +146,9 @@ All models run locally on CPU with int8 quantization.
 
 So foreplay and dirty talk, this is where it's at.
 
-This is where the rubber hits the road because what happens,
-she starts to get extremely turned on.
+This is where the rubber hits the road because what happens, she starts to get extremely turned on.
+
+She wants to get to a point where she wants you, where she can't wait.
 ```
 
 ## Progress Output

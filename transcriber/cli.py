@@ -1,11 +1,14 @@
 import argparse
 import sys
+import time
 from pathlib import Path
 
-from transcriber.core import SUPPORTED_EXTENSIONS, load_model, transcribe
+from transcriber.core import SUPPORTED_EXTENSIONS, format_timestamp, load_model, transcribe
 
 
-def transcribe_file(input_path: Path, output_path: Path, model, language: str | None, timestamps: bool) -> None:
+def transcribe_file(input_path: Path, output_path: Path, model, language: str | None, timestamps: bool) -> float:
+    """Transcribe a single file. Returns elapsed time in seconds."""
+    t = time.monotonic()
     result = transcribe(
         input_path=input_path.resolve(),
         model=model,
@@ -13,7 +16,8 @@ def transcribe_file(input_path: Path, output_path: Path, model, language: str | 
         timestamps=timestamps,
     )
     output_path.write_text(result, encoding="utf-8")
-    print(f"  Saved: {output_path}")
+    print(f"  💾 Saved: {output_path.name}")
+    return time.monotonic() - t
 
 
 def main() -> None:
@@ -42,9 +46,11 @@ def main() -> None:
     model = load_model(args.model)
 
     if args.input.is_file():
+        print(f"\n📄 {args.input.name}")
         output_path = args.output or args.input.with_suffix(".md")
-        transcribe_file(args.input, output_path, model, args.language, args.timestamps)
-        print(f"\nDone!")
+        elapsed = transcribe_file(args.input, output_path, model, args.language, args.timestamps)
+        print(f"\n{'─' * 50}")
+        print(f"✅ All done in {format_timestamp(elapsed)}")
     elif args.input.is_dir():
         files = sorted(
             f for f in args.input.iterdir()
@@ -54,16 +60,29 @@ def main() -> None:
             print(f"No supported media files found in: {args.input}", file=sys.stderr)
             sys.exit(1)
 
-        print(f"Found {len(files)} file(s) to transcribe:\n")
+        total = len(files)
+        skipped = 0
+        processed = 0
+        t_total = time.monotonic()
+
+        print(f"\n📂 {args.input}")
+        print(f"   {total} media file(s) found\n")
+        print(f"{'─' * 50}")
+
         for i, f in enumerate(files, 1):
-            print(f"[{i}/{len(files)}] {f.name}")
             output_path = f.with_suffix(".md")
             if output_path.exists():
-                print(f"  Skipped (already exists): {output_path}")
+                skipped += 1
+                print(f"\n⏭️  [{i}/{total}] {f.name} — skipped (already transcribed)")
                 continue
+            processed += 1
+            print(f"\n🎬 [{i}/{total}] {f.name}")
             transcribe_file(f, output_path, model, args.language, args.timestamps)
 
-        print(f"\nDone! Transcribed {len(files)} file(s).")
+        elapsed_total = time.monotonic() - t_total
+        print(f"\n{'─' * 50}")
+        print(f"✅ All done in {format_timestamp(elapsed_total)}")
+        print(f"   📊 {processed} transcribed, {skipped} skipped, {total} total")
     else:
         print(f"Error: {args.input} is not a file or directory", file=sys.stderr)
         sys.exit(1)

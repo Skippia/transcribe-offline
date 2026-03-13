@@ -1,12 +1,16 @@
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from faster_whisper import WhisperModel
 
 
 SUPPORTED_EXTENSIONS = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".flv", ".wmv", ".mp3", ".wav", ".flac", ".ogg", ".m4a"}
+
+BAR_WIDTH = 30
+PAUSE_THRESHOLD = 1.5
 
 
 def extract_audio(video_path: Path, audio_path: Path) -> None:
@@ -36,10 +40,25 @@ def format_timestamp(seconds: float) -> str:
     return f"{m:02d}:{s:02d}"
 
 
+def print_progress(current: float, total: float, elapsed: float) -> None:
+    """Print a progress bar to stderr."""
+    if total <= 0:
+        return
+    pct = min(current / total, 1.0)
+    filled = int(BAR_WIDTH * pct)
+    bar = "█" * filled + "░" * (BAR_WIDTH - filled)
+    eta = (elapsed / pct - elapsed) if pct > 0.05 else 0
+    eta_str = format_timestamp(eta) if eta > 0 else "--:--"
+    print(f"\r  ┃{bar}┃ {pct:5.1%}  elapsed {format_timestamp(elapsed)}  eta {eta_str}", end="", flush=True)
+
+
 def load_model(model_size: str = "medium") -> WhisperModel:
     """Load and return a WhisperModel instance."""
-    print(f"Loading model '{model_size}'...")
-    return WhisperModel(model_size, device="cpu", compute_type="int8")
+    print(f"⏳ Loading model '{model_size}'...", end="", flush=True)
+    t = time.monotonic()
+    model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    print(f" done ({time.monotonic() - t:.1f}s)")
+    return model
 
 
 def transcribe(input_path: Path, model_size: str = "medium", language: str | None = None, timestamps: bool = False, model: WhisperModel | None = None) -> str:
@@ -55,31 +74,24 @@ def transcribe(input_path: Path, model_size: str = "medium", language: str | Non
     if model is None:
         model = load_model(model_size)
 
+    # Step 1: Extract audio
     if is_audio:
         audio_file = str(input_path)
         tmp_dir = None
     else:
         tmp_dir = tempfile.mkdtemp()
         audio_file = str(Path(tmp_dir) / "audio.wav")
-        print("Extracting audio...")
+        print("  📦 Extracting audio...", end="", flush=True)
+        t = time.monotonic()
         extract_audio(input_path, Path(audio_file))
+        print(f" done ({time.monotonic() - t:.1f}s)")
 
-    print("Transcribing...")
+    # Step 2: Transcribe with progress
+    print("  🔊 Transcribing...")
+    t_start = time.monotonic()
     segments, info = model.transcribe(audio_file, language=language, beam_size=5)
+    duration = info.duration
 
-    lines: list[str] = []
-    lines.append(f"# Transcription: {input_path.name}\n")
-    lines.append(f"- **Language:** {info.language} ({info.language_probability:.0%} confidence)")
-    lines.append(f"- **Duration:** {format_timestamp(info.duration)}")
-    lines.append(f"- **Model:** whisper-{model_size}")
-    lines.append("")
-
-    lines.append("## Content\n")
-
-    # Collect all segments, then merge into coherent paragraphs.
-    # A new paragraph starts when there's a pause > 1.5s between segments
-    # or the previous segment ended with sentence-ending punctuation.
-    PAUSE_THRESHOLD = 1.5
     paragraphs: list[str] = []
     current_parts: list[str] = []
     current_ts: float = 0.0
@@ -89,6 +101,8 @@ def transcribe(input_path: Path, model_size: str = "medium", language: str | Non
         text = segment.text.strip()
         if not text:
             continue
+
+        print_progress(segment.end, duration, time.monotonic() - t_start)
 
         gap = segment.start - prev_end if prev_end > 0 else 0.0
         ends_sentence = current_parts and current_parts[-1][-1:] in ".!?"
@@ -105,6 +119,19 @@ def transcribe(input_path: Path, model_size: str = "medium", language: str | Non
 
     if current_parts:
         paragraphs.append((" ".join(current_parts), current_ts))
+
+    elapsed = time.monotonic() - t_start
+    print_progress(duration, duration, elapsed)
+    print(f"\n  ✅ Done in {format_timestamp(elapsed)} | {info.language} ({info.language_probability:.0%}) | {format_timestamp(duration)} audio")
+
+    # Step 3: Build markdown
+    lines: list[str] = []
+    lines.append(f"# Transcription: {input_path.name}\n")
+    lines.append(f"- **Language:** {info.language} ({info.language_probability:.0%} confidence)")
+    lines.append(f"- **Duration:** {format_timestamp(duration)}")
+    lines.append(f"- **Model:** whisper-{model_size}")
+    lines.append("")
+    lines.append("## Content\n")
 
     for text, ts in paragraphs:
         if timestamps:
